@@ -172,7 +172,6 @@ void drawDebugDisplay(Lab2A *me) {
 void Lab2A_ctor(void) {
     Lab2A *me = &AO_Lab2A;
     me->currentFreq = DEFAULT_FREQ;
-    me->baseFreq = DEFAULT_FREQ;  // Initialize base frequency
     me->a4Visible = 0;
     me->currentMode = 0;
     me->detectedFreq = 0.0f;
@@ -208,7 +207,6 @@ QState Lab2A_standardTuning(Lab2A *me) {
         case ENCODER_UP: {
             if (me->currentFreq < MAX_FREQ) {
                 me->currentFreq++;
-                me->baseFreq = me->currentFreq;  // Update base frequency
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
             }
@@ -217,7 +215,6 @@ QState Lab2A_standardTuning(Lab2A *me) {
         case ENCODER_DOWN: {
             if (me->currentFreq > MIN_FREQ) {
                 me->currentFreq--;
-                me->baseFreq = me->currentFreq;  // Update base frequency
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
             }

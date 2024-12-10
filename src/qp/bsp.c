@@ -252,7 +252,8 @@ void QF_onIdle(void) {
                          sample_f);
 
     // Calculate cents offset using the current base frequency
-    float cents = calculateCentsOffset(frequency, AO_Lab2A.baseFreq);
+    float nearestNote = getNearestNoteFreq(frequency);
+    int cents = calculateCents(frequency, nearestNote);
 
     // Update active object
     AO_Lab2A.detectedFreq = frequency;

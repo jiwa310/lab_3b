@@ -44,8 +44,6 @@ typedef struct Lab2ATag {
     int prevBarWasRight;  // 1 if bar was on right, 0 if on left
 } Lab2A;
 
-float baseFreq;   // Current base frequency for A4 (440Hz by default)
-
 extern Lab2A AO_Lab2A;
 void Lab2A_ctor(void);
 void drawA4Overlay(int freq);
