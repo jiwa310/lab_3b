@@ -4,7 +4,7 @@
 // Display constants
 #define DISPLAY_X 70
 #define DISPLAY_Y 140
-#define BAR_WIDTH 100
+#define BAR_WIDTH 120
 #define TEXT_Y 180
 
 // Tuning constants

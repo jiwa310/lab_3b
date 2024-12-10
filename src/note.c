@@ -80,8 +80,8 @@ void findNote(float f) {
    */
 }
 
-void findNoteForDisplay(float f, char* noteStr, size_t size) {
-    float c = 261.63;
+void findNoteForDisplay(float f, char* noteStr, size_t size, float baseA4) {
+    float c = 261.63f * (baseA4 / 440.0f);    // Scale C4 based on A4 tuning
     float r;
     int oct = 4;
     int note = 0;

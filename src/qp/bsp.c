@@ -62,16 +62,30 @@ volatile int lastActivityTime = 0;
 void debounceInterrupt(); // Write This function
 
 int calculateCents(float freq, float baseFreq) {
-    // Use the formula: cents = 1200 * log2(freq/baseFreq)
+    // Validate input frequencies
+    if (freq <= 0 || baseFreq <= 0) {
+        return 0;
+    }
+
     return (int)(1200.0 * log2(freq/baseFreq));
 }
 
 // Get the nearest note frequency
-float getNearestNoteFreq(float freq) {
-    float c4 = 261.63; // C4 as reference
-    float semitones = 12.0 * log2(freq/c4);
-    int nearest = (int)(semitones + 0.5);
-    return c4 * pow(2.0, nearest/12.0);
+float getNearestNoteFreq(float freq, float a4Freq) {
+    if (freq <= 0) return a4Freq;
+    
+    // Scale all note frequencies based on A4 tuning
+    float scalingFactor = a4Freq / 440.0;  // How much to scale standard frequencies
+    
+    // Find the nearest note in the standard scale, then apply the scaling
+    float normalizedFreq = freq / scalingFactor;  // Convert to standard A440 scale
+    float a4 = 440.0;  // A4 in standard tuning
+    float semitones = 12.0 * log2(normalizedFreq/a4);
+    int nearestSemitone = (int)(semitones + 0.5);
+    
+    // Calculate the note frequency in A440 scale, then scale to the current A4 reference
+    float standardFreq = a4 * pow(2.0, nearestSemitone/12.0);
+    return standardFreq * scalingFactor;
 }
 
 // Create ONE interrupt controllers XIntc
@@ -251,9 +265,18 @@ void QF_onIdle(void) {
                          FFT_LOG2_SAMPLES - 2,
                          sample_f);
 
+    // Validate frequency
+    if (frequency <= 0 || frequency > 5000) {
+        return;
+    }
+
     // Calculate cents offset using the current base frequency
-    float nearestNote = getNearestNoteFreq(frequency);
+    float nearestNote = getNearestNoteFreq(frequency, AO_Lab2A.currentFreq);
     int cents = calculateCents(frequency, nearestNote);
+
+    // Clamp cents to reasonable range for display
+    if (cents > 50) cents = 50;
+    if (cents < -50) cents = -50;
 
     // Update active object
     AO_Lab2A.detectedFreq = frequency;
@@ -412,7 +435,7 @@ void read_fsl_values(float* q, int n, int averaging_factor) {
     int32_t sum;
 
     stream_grabber_start();
-    stream_grabber_wait_enough_samples(1024);
+    stream_grabber_wait_enough_samples(4096);
 
     // Process averaging_factor samples at a time
     for(i = 0; i < n; i++) {

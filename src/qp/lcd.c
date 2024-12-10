@@ -154,7 +154,7 @@ void initLCD(void) {
 	fcl = 0xFF;
 	bch = 0x00;
 	bcl = 0x00;
-	setFont(SmallFont);
+	setFont(BigFont);
 }
 
 // Set boundary for drawing
@@ -275,6 +275,61 @@ void lcdPrint(char *st, int x, int y) {
 	int i = 0;
 	while (*st != '\0')
 		printChar(*st++, x + cfont.x_size * i++, y);
+}
+
+// Print a character with 3x3 scaling (each pixel becomes a 3x3 block)
+void printCharScaled(u8 c, int x, int y) {
+    u8 ch;
+    int scale = 3;  // Scale factor for each pixel
+    int scaledWidth = cfont.x_size * scale;
+    int scaledHeight = cfont.y_size * scale;
+
+    // Calculate starting pixel index in font array
+    int pixelIndex = (c - cfont.offset) * (cfont.x_size >> 3) * cfont.y_size + 4;
+
+    // For each row in original character
+    for (int row = 0; row < cfont.y_size; row++) {
+        // Repeat each row 'scale' times
+        for (int scaleY = 0; scaleY < scale; scaleY++) {
+            // Set drawing region for this row
+            setXY(x, y + (row * scale) + scaleY,
+                  x + scaledWidth - 1,
+                  y + (row * scale) + scaleY);
+
+            // Process each byte in the row
+            for (int byteIndex = 0; byteIndex < (cfont.x_size >> 3); byteIndex++) {
+                ch = cfont.font[pixelIndex + row * (cfont.x_size >> 3) + byteIndex];
+
+                // Process each bit in the byte
+                for (int bit = 7; bit >= 0; bit--) {
+                    u8 color_h, color_l;
+                    if ((ch & (1 << bit)) != 0) {
+                        color_h = fch;
+                        color_l = fcl;
+                    } else {
+                        color_h = bch;
+                        color_l = bcl;
+                    }
+
+                    // Write the same pixel 'scale' times horizontally
+                    for (int scaleX = 0; scaleX < scale; scaleX++) {
+                        LCD_Write_DATA(color_h);
+                        LCD_Write_DATA(color_l);
+                    }
+                }
+            }
+        }
+    }
+
+    clrXY();
+}
+
+// Print string with scaled characters
+void lcdPrintScaled(char *st, int x, int y) {
+    int i = 0;
+    while (*st != '\0') {
+        printCharScaled(*st++, x + (cfont.x_size * 3 * i++), y);
+    }
 }
 
 void setPixel(int x, int y) {

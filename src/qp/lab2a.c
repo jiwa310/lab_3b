@@ -18,17 +18,45 @@ static QState Lab2A_debugMode(Lab2A *me);
 Lab2A AO_Lab2A;
 
 void drawA4Overlay(int freq) {
+    const int SCREEN_WIDTH = 240;
+    const int SCALE = 3;
+    
+    // Calculate vertical position - needs to be below the cents display
+    const int freqY = 40;
+    const int noteY = freqY + 50;
+    const int barY = noteY + (cfont.y_size * SCALE) + 40;
+    const int centsY = barY + 30;
+    const int a4Y = centsY + 35;  // Position below cents text
+    
     // Draw A4 frequency text in white on black
     setColor(255, 255, 255);
     setColorBg(0, 0, 0);
+    
     char freqText[20];
     sprintf(freqText, "A4: %d Hz", freq);
-    lcdPrint(freqText, DISPLAY_X, DISPLAY_Y - 40);
+    
+    // Center the text
+    setFont(BigFont);
+    int textWidth = strlen(freqText) * cfont.x_size;
+    int textX = (SCREEN_WIDTH - textWidth) / 2;
+    
+    lcdPrint(freqText, textX, a4Y);
 }
 
 void clearA4Overlay(void) {
-    setColor(0, 0, 0);  // Black background
-    fillRect(DISPLAY_X, DISPLAY_Y - 45, DISPLAY_X + BAR_WIDTH, DISPLAY_Y - 25);
+    const int SCREEN_WIDTH = 240;
+    const int SCALE = 3;
+    
+    // Calculate the same vertical position
+    const int freqY = 40;
+    const int noteY = freqY + 50;
+    const int barY = noteY + (cfont.y_size * SCALE) + 40;
+    const int centsY = barY + 30;
+    const int a4Y = centsY + 35;
+    
+    // Clear the A4 overlay area
+    setColor(0, 0, 0);
+    fillRect(0, a4Y - 5, SCREEN_WIDTH, a4Y + 25);
 }
 
 void getColorForCents(int cents, uint8_t* r, uint8_t* g, uint8_t* b) {
@@ -55,92 +83,96 @@ void getColorForCents(int cents, uint8_t* r, uint8_t* g, uint8_t* b) {
 }
 
 void drawDetectedFreq(float freq, int cents) {
-    Lab2A *me = &AO_Lab2A;
+    static float prevFreq = 0;
+    static char prevNoteStr[10] = "";
+    static int prevCents = 0;
 
-    // Get new note info
+    const int SCALE = 3;
+    const int SCREEN_WIDTH = 240;
+
+    // Calculate vertical positions
+    const int freqY = 40;
+    const int noteY = freqY + 50;
+    const int barY = noteY + (cfont.y_size * SCALE) + 40;
+    const int centsY = barY + 30;
+
+    // Get note info and colors
     char noteStr[10];
-    findNoteForDisplay(freq, noteStr, sizeof(noteStr));
-    setFont(BigFont);
-    int noteWidth = strlen(noteStr) * cfont.x_size;
-    int noteX = DISPLAY_X + (BAR_WIDTH - noteWidth)/2;
-    int noteY = DISPLAY_Y - 10;
-
-    // Calculate new bar info
-    const int BAR_Y = noteY + (cfont.y_size/4);
-    const int BAR_HEIGHT = cfont.y_size/2;
-    const int MAX_BAR_WIDTH = BAR_WIDTH/2;
-
-    int barWidth = 0;
-    int barX = 0;
-    int barIsRight = (cents > 0);
-
-    if (cents > 0) {
-        barWidth = (cents * MAX_BAR_WIDTH) / 50;
-        if (barWidth > MAX_BAR_WIDTH) barWidth = MAX_BAR_WIDTH;
-        barX = noteX + noteWidth + 5;
-    } else if (cents < 0) {
-        barWidth = (-cents * MAX_BAR_WIDTH) / 50;
-        if (barWidth > MAX_BAR_WIDTH) barWidth = MAX_BAR_WIDTH;
-        barX = noteX - 5 - barWidth;
-    }
-
-    // Clear previous areas if different
-    setColor(0, 0, 0);  // Black for clearing
-
-    // Clear old note area if position changed
-    if (strcmp(noteStr, me->prevNote) != 0 || noteX != me->prevNoteX) {
-        fillRect(me->prevNoteX, noteY,
-                me->prevNoteX + me->prevNoteWidth, noteY + cfont.y_size);
-    }
-
-    // Clear old bar area if position/size changed
-    if (me->prevBarWidth > 0) {
-        if (me->prevBarWasRight) {
-            fillRect(me->prevBarX, BAR_Y,
-                    me->prevBarX + me->prevBarWidth, BAR_Y + BAR_HEIGHT);
-        } else {
-            fillRect(me->prevBarX, BAR_Y,
-                    me->prevBarX + me->prevBarWidth, BAR_Y + BAR_HEIGHT);
-        }
-    }
-
-    // Draw new note and bar
+    findNoteForDisplay(freq, noteStr, sizeof(noteStr), AO_Lab2A.currentFreq);
     uint8_t r, g, b;
     getColorForCents(cents, &r, &g, &b);
 
-    // Draw new note
-    setColor(r, g, b);
-    setColorBg(0, 0, 0);
-    lcdPrint(noteStr, noteX, noteY);
+    // Calculate positions
+    setFont(BigFont);
+    int noteWidth = strlen(noteStr) * cfont.x_size * SCALE;
+    int noteX = (SCREEN_WIDTH - noteWidth) / 2;
 
-    // Draw new bar
-    if (barWidth > 0) {
-        setColor(r, g, b);
-        fillRect(barX, BAR_Y, barX + barWidth, BAR_Y + BAR_HEIGHT);
+    // Update frequency display if changed
+    if (freq != prevFreq) {
+        setColor(0, 0, 0);  // Clear old frequency
+        fillRect(0, freqY - 5, SCREEN_WIDTH, freqY + 25);
+
+        setFont(BigFont);
+        setColor(255, 255, 255);
+        char freqText[20];
+        sprintf(freqText, "%.1f Hz", freq);
+        int freqWidth = strlen(freqText) * cfont.x_size;
+        int freqX = (SCREEN_WIDTH - freqWidth) / 2;
+        lcdPrint(freqText, freqX, freqY);
+        prevFreq = freq;
     }
 
-    // Clear and redraw frequency and cents text
+    // Update note display if changed
+    if (strcmp(noteStr, prevNoteStr) != 0) {
+        setColor(0, 0, 0);  // Clear old note
+        fillRect(0, noteY, SCREEN_WIDTH, noteY + (cfont.y_size * SCALE));
+
+        setColor(r, g, b);
+        setColorBg(0, 0, 0);
+        lcdPrintScaled(noteStr, noteX, noteY);
+        strcpy(prevNoteStr, noteStr);
+    }
+
+    // Bar drawing - simplified
+    const int BAR_HEIGHT = 20;
+    const int MAX_BAR_WIDTH = 60;  // Maximum width for each side
+    const int barCenterX = SCREEN_WIDTH / 2;
+
+    // Clear entire bar area
     setColor(0, 0, 0);
-    fillRect(DISPLAY_X, DISPLAY_Y + 20, DISPLAY_X + BAR_WIDTH, DISPLAY_Y + 50);
+    fillRect(barCenterX - MAX_BAR_WIDTH, barY,
+             barCenterX + MAX_BAR_WIDTH, barY + BAR_HEIGHT);
 
-    setFont(SmallFont);
-    setColor(255, 255, 255);
+    // Draw center marker
+    setColor(128, 128, 128);  // Gray for center marker
+    fillRect(barCenterX - 1, barY, barCenterX + 1, barY + BAR_HEIGHT);
 
-    char freqText[20];
-    sprintf(freqText, "%.1f Hz", freq);
-    lcdPrint(freqText, DISPLAY_X, DISPLAY_Y + 20);
+    // Draw bar
+    setColor(r, g, b);
+    if (cents > 0) {
+        int width = (cents * MAX_BAR_WIDTH) / 50;
+        if (width > MAX_BAR_WIDTH) width = MAX_BAR_WIDTH;
+        fillRect(barCenterX, barY, barCenterX + width, barY + BAR_HEIGHT);
+    } else if (cents < 0) {
+        int width = (-cents * MAX_BAR_WIDTH) / 50;
+        if (width > MAX_BAR_WIDTH) width = MAX_BAR_WIDTH;
+        fillRect(barCenterX - width, barY, barCenterX, barY + BAR_HEIGHT);
+    }
 
-    char centsText[20];
-    sprintf(centsText, "%+d cents", cents);
-    lcdPrint(centsText, DISPLAY_X, DISPLAY_Y + 35);
+    // Update cents display if changed
+    if (cents != prevCents) {
+        setColor(0, 0, 0);
+        fillRect(0, centsY - 5, SCREEN_WIDTH, centsY + 25);
 
-    // Store current state for next update
-    strcpy(me->prevNote, noteStr);
-    me->prevNoteX = noteX;
-    me->prevNoteWidth = noteWidth;
-    me->prevBarX = barX;
-    me->prevBarWidth = barWidth;
-    me->prevBarWasRight = barIsRight;
+        setFont(BigFont);
+        setColor(255, 255, 255);
+        char centsText[20];
+        sprintf(centsText, "%+d cents", cents);
+        int centsWidth = strlen(centsText) * cfont.x_size;
+        int centsX = (SCREEN_WIDTH - centsWidth) / 2;
+        lcdPrint(centsText, centsX, centsY);
+        prevCents = cents;
+    }
 }
 
 void drawDebugDisplay(Lab2A *me) {
@@ -209,6 +241,9 @@ QState Lab2A_standardTuning(Lab2A *me) {
                 me->currentFreq++;
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
+                // Recalculate cents with new base frequency
+                // me->centOffset = calculateCents(me->detectedFreq, me->currentFreq);
+                // drawDetectedFreq(me->detectedFreq, me->centOffset);
             }
             return Q_HANDLED();
         }
@@ -217,6 +252,9 @@ QState Lab2A_standardTuning(Lab2A *me) {
                 me->currentFreq--;
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
+                // Recalculate cents with new base frequency
+                // me->centOffset = calculateCents(me->detectedFreq, me->currentFreq);
+                // drawDetectedFreq(me->detectedFreq, me->centOffset);
             }
             return Q_HANDLED();
         }

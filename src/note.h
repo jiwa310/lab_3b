@@ -23,7 +23,6 @@ Returns
 
 #define root2 1.0594631 //twelfth root of 2
 
-void findNote(float f);
-void findNoteForDisplay(float f, char* noteStr, size_t size);
+void findNoteForDisplay(float f, char* noteStr, size_t size, float baseA4);
 
 #endif
