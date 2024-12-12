@@ -16,13 +16,15 @@
 #define SAMPLES 512
 #define FFT_LOG2_SAMPLES 9
 
+#define FREQ_HISTORY_SIZE 10
+
 enum Lab2ASignals {
     ENCODER_UP = Q_USER_SIG,
     ENCODER_DOWN,
     ENCODER_CLICK,
-    BTN1_PRESS,    // Standard tuning mode
+    BTN1_PRESS,    // Future use
     BTN2_PRESS,    // Debug mode
-    BTN3_PRESS,    // Future use
+    BTN3_PRESS,    // Standard mode
     BTN4_PRESS,    // Future use
     TIMEOUT,        // For A4 overlay timeout
 	NEW_FREQ_EVENT
@@ -32,16 +34,24 @@ typedef struct Lab2ATag {
     QActive super;
     int currentFreq;
     int a4Visible;
-    int currentMode;
     float detectedFreq;
     int centOffset;
-    // Add previous state tracking
-    char prevNote[10];
-    int prevNoteX;
-    int prevNoteWidth;
-    int prevBarX;
+    int currentMode;  // 0 for standard tuning, 1 for debug mode
+
+    // Display state tracking
+    float prevFreq;
+    char prevNoteStr[10];
+    int prevCents;
+    uint8_t prevR, prevG, prevB;
     int prevBarWidth;
-    int prevBarWasRight;  // 1 if bar was on right, 0 if on left
+    int prevBarSide;  // 0 for center, -1 for left, 1 for right
+
+    struct {
+        float freq;
+        int cents;
+        char note[10];
+    } freqHistory[FREQ_HISTORY_SIZE];
+    int historyIndex;
 } Lab2A;
 
 extern Lab2A AO_Lab2A;

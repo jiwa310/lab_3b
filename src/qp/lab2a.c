@@ -1,4 +1,6 @@
 #define AO_LAB2A
+#include <stdio.h>
+#include <stdlib.h>
 #include "qpn_port.h"
 #include "bsp.h"
 #include "lab2a.h"
@@ -83,32 +85,35 @@ void getColorForCents(int cents, uint8_t* r, uint8_t* g, uint8_t* b) {
 }
 
 void drawDetectedFreq(float freq, int cents) {
-    static float prevFreq = 0;
-    static char prevNoteStr[10] = "";
-    static int prevCents = 0;
+    Lab2A *me = &AO_Lab2A;
 
-    const int SCALE = 3;
-    const int SCREEN_WIDTH = 240;
+    // Constants that don't depend on calculations
+    static const int SCALE = 3;
+    static const int SCREEN_WIDTH = 240;
+    static const int freqY = 40;
+    static const int noteY = freqY + 50;
+    static const int BAR_HEIGHT = 20;
+    static const int MAX_BAR_WIDTH = 60;
 
-    // Calculate vertical positions
-    const int freqY = 40;
-    const int noteY = freqY + 50;
+    // Set font first to ensure consistent calculations
+    setFont(BigFont);
+
+    // Calculate dependent positions
     const int barY = noteY + (cfont.y_size * SCALE) + 40;
     const int centsY = barY + 30;
+    const int barCenterX = SCREEN_WIDTH / 2;
 
     // Get note info and colors
     char noteStr[10];
-    findNoteForDisplay(freq, noteStr, sizeof(noteStr), AO_Lab2A.currentFreq);
+    findNoteForDisplay(freq, noteStr, sizeof(noteStr), me->currentFreq);
+    const int noteWidth = strlen(noteStr) * cfont.x_size * SCALE;
+    const int noteX = (SCREEN_WIDTH - noteWidth) / 2;
+
     uint8_t r, g, b;
     getColorForCents(cents, &r, &g, &b);
 
-    // Calculate positions
-    setFont(BigFont);
-    int noteWidth = strlen(noteStr) * cfont.x_size * SCALE;
-    int noteX = (SCREEN_WIDTH - noteWidth) / 2;
-
     // Update frequency display if changed
-    if (freq != prevFreq) {
+    if (freq != me->prevFreq) {
         setColor(0, 0, 0);  // Clear old frequency
         fillRect(0, freqY - 5, SCREEN_WIDTH, freqY + 25);
 
@@ -119,48 +124,63 @@ void drawDetectedFreq(float freq, int cents) {
         int freqWidth = strlen(freqText) * cfont.x_size;
         int freqX = (SCREEN_WIDTH - freqWidth) / 2;
         lcdPrint(freqText, freqX, freqY);
-        prevFreq = freq;
+        me->prevFreq = freq;
     }
 
     // Update note display if changed
-    if (strcmp(noteStr, prevNoteStr) != 0) {
+    if (strcmp(noteStr, me->prevNoteStr) != 0) {
         setColor(0, 0, 0);  // Clear old note
         fillRect(0, noteY, SCREEN_WIDTH, noteY + (cfont.y_size * SCALE));
 
         setColor(r, g, b);
         setColorBg(0, 0, 0);
         lcdPrintScaled(noteStr, noteX, noteY);
-        strcpy(prevNoteStr, noteStr);
+        strcpy(me->prevNoteStr, noteStr);
     }
 
-    // Bar drawing - simplified
-    const int BAR_HEIGHT = 20;
-    const int MAX_BAR_WIDTH = 60;  // Maximum width for each side
-    const int barCenterX = SCREEN_WIDTH / 2;
-
-    // Clear entire bar area
-    setColor(0, 0, 0);
-    fillRect(barCenterX - MAX_BAR_WIDTH, barY,
-             barCenterX + MAX_BAR_WIDTH, barY + BAR_HEIGHT);
-
-    // Draw center marker
-    setColor(128, 128, 128);  // Gray for center marker
-    fillRect(barCenterX - 1, barY, barCenterX + 1, barY + BAR_HEIGHT);
-
-    // Draw bar
-    setColor(r, g, b);
+    // Bar drawing - only update if needed
+    int width = 0;
+    int barSide = 0;
     if (cents > 0) {
-        int width = (cents * MAX_BAR_WIDTH) / 50;
+        width = (cents * MAX_BAR_WIDTH) / 50;
         if (width > MAX_BAR_WIDTH) width = MAX_BAR_WIDTH;
-        fillRect(barCenterX, barY, barCenterX + width, barY + BAR_HEIGHT);
+        barSide = 1;
     } else if (cents < 0) {
-        int width = (-cents * MAX_BAR_WIDTH) / 50;
+        width = (-cents * MAX_BAR_WIDTH) / 50;
         if (width > MAX_BAR_WIDTH) width = MAX_BAR_WIDTH;
-        fillRect(barCenterX - width, barY, barCenterX, barY + BAR_HEIGHT);
+        barSide = -1;
+    }
+
+    // Only update bar if position or color changed
+    if (width != me->prevBarWidth || barSide != me->prevBarSide ||
+        r != me->prevR || g != me->prevG || b != me->prevB) {
+        
+        // Clear entire bar area with some padding
+        setColor(0, 0, 0);
+        fillRect(barCenterX - MAX_BAR_WIDTH - 2, barY - 2,
+                barCenterX + MAX_BAR_WIDTH + 2, barY + BAR_HEIGHT + 2);
+
+        // Draw center marker
+        setColor(128, 128, 128);
+        fillRect(barCenterX - 1, barY, barCenterX + 1, barY + BAR_HEIGHT);
+
+        // Draw new bar
+        setColor(r, g, b);
+        if (barSide > 0) {
+            fillRect(barCenterX, barY, barCenterX + width, barY + BAR_HEIGHT);
+        } else if (barSide < 0) {
+            fillRect(barCenterX - width, barY, barCenterX, barY + BAR_HEIGHT);
+        }
+
+        me->prevBarWidth = width;
+        me->prevBarSide = barSide;
+        me->prevR = r;
+        me->prevG = g;
+        me->prevB = b;
     }
 
     // Update cents display if changed
-    if (cents != prevCents) {
+    if (cents != me->prevCents) {
         setColor(0, 0, 0);
         fillRect(0, centsY - 5, SCREEN_WIDTH, centsY + 25);
 
@@ -171,34 +191,88 @@ void drawDetectedFreq(float freq, int cents) {
         int centsWidth = strlen(centsText) * cfont.x_size;
         int centsX = (SCREEN_WIDTH - centsWidth) / 2;
         lcdPrint(centsText, centsX, centsY);
-        prevCents = cents;
+        me->prevCents = cents;
     }
 }
 
 void drawDebugDisplay(Lab2A *me) {
-    setColor(0, 0, 0);  // Black background
+    // Clear screen
+    setColor(0, 0, 0);
     fillRect(0, 0, 240, 320);
 
-    setColor(255, 255, 255);  // White text
-    setColorBg(0, 0, 0);
-
+    // Header section
+    setColor(255, 255, 255);
+    setFont(SmallFont);
     char text[30];
-    int y = 20;
+    int y = 10;
 
-    sprintf(text, "Debug Display");
+    // Display current settings and detected frequency
+    sprintf(text, "A4: %d Hz", me->currentFreq);
     lcdPrint(text, 10, y);
-    y += 30;
+    y += 15;
 
-    sprintf(text, "A4 Reference: %d Hz", me->currentFreq);
+    sprintf(text, "Detected: %.1f Hz", me->detectedFreq);
     lcdPrint(text, 10, y);
+    y += 15;
+
+    sprintf(text, "Offset: %+d cents", me->centOffset);
+    lcdPrint(text, 10, y);
+    y += 25;
+
+    // FFT Display section
+    setColor(255, 255, 255);
+    lcdPrint("FFT Spectrum:", 10, y);
     y += 20;
 
-    sprintf(text, "Input: %.1f Hz", me->detectedFreq);
-    lcdPrint(text, 10, y);
-    y += 20;
+    // Draw axes
+    int graphX = 30;        // Left margin
+    int graphY = y;         // Top of graph
+    int graphW = 180;       // Graph width
+    int graphH = 120;       // Graph height
 
-    sprintf(text, "Cents: %+d", me->centOffset);
-    lcdPrint(text, 10, y);
+    // Draw axes
+    drawHLine(graphX, graphY + graphH, graphW);  // X axis
+    for(int i = 0; i < graphH; i += 20) {        // Y axis ticks
+        drawHLine(graphX - 2, graphY + i, 4);
+    }
+
+    // Plot FFT bins around detected frequency
+    if(me->detectedFreq > 0) {
+        float bin_spacing = (SAMPLE_RATE/4) / SAMPLES;  // Assuming 4x averaging
+        int center_bin = (int)(me->detectedFreq / bin_spacing);
+        int bins_to_show = 15;  // Show 15 bins on each side
+
+        // Draw FFT bars
+        setColor(0, 255, 0);  // Green for FFT data
+        for(int i = -bins_to_show; i <= bins_to_show; i++) {
+            int bin = center_bin + i;
+            if(bin >= 0 && bin < SAMPLES/2) {
+                // Get magnitude from q and w arrays (stored in globals)
+                float mag = q[bin]*q[bin] + w[bin]*w[bin];
+                // Log scale for better visibility
+                mag = 10 * log10f(mag + 1);  // +1 to avoid log(0)
+
+                // Scale to fit graph
+                int height = (int)((mag * graphH) / 100);
+                if(height > graphH) height = graphH;
+                if(height < 0) height = 0;
+
+                // Draw bar
+                int x = graphX + (i + bins_to_show) * (graphW/(2*bins_to_show));
+                fillRect(x, graphY + graphH - height, x + 2, graphY + graphH);
+            }
+        }
+
+        // Mark detected frequency bin
+        setColor(255, 0, 0);  // Red marker
+        int x = graphX + bins_to_show * (graphW/(2*bins_to_show));
+        fillRect(x-1, graphY, x+1, graphY + graphH);
+    }
+
+    // Instructions at bottom
+    y = 280;
+    setColor(0, 255, 0);
+    lcdPrint("BTN3: Return to Tuner", 10, y);
 }
 
 void Lab2A_ctor(void) {
@@ -208,6 +282,23 @@ void Lab2A_ctor(void) {
     me->currentMode = 0;
     me->detectedFreq = 0.0f;
     me->centOffset = 0;
+    me->historyIndex = 0;
+    
+    // Initialize display state tracking
+    me->prevFreq = 0.0f;
+    me->prevNoteStr[0] = '\0';
+    me->prevCents = 0;
+    me->prevR = me->prevG = me->prevB = 0;
+    me->prevBarWidth = 0;
+    me->prevBarSide = 0;
+
+    // Clear history
+    for (int i = 0; i < FREQ_HISTORY_SIZE; i++) {
+        me->freqHistory[i].freq = 0.0f;
+        me->freqHistory[i].cents = 0;
+        me->freqHistory[i].note[0] = '\0';
+    }
+    
     QActive_ctor(&me->super, (QStateHandler)Lab2A_initial);
 }
 
@@ -229,21 +320,30 @@ QState Lab2A_on(Lab2A *me) {
 
 QState Lab2A_standardTuning(Lab2A *me) {
     switch (Q_SIG(me)) {
-        case Q_ENTRY_SIG: {
-            drawDetectedFreq(me->detectedFreq, me->centOffset);
-            if (me->a4Visible) {
-                drawA4Overlay(me->currentFreq);
-            }
-            return Q_HANDLED();
-        }
+    case Q_ENTRY_SIG: {
+			xil_printf("Entering standard tuning mode\n\r");
+			me->currentMode = 0;
+
+			// Reset state tracking variables to force redraw
+			me->prevFreq = 0.0f;
+			me->prevNoteStr[0] = '\0';
+			me->prevCents = 0;
+			me->prevR = me->prevG = me->prevB = 0;
+			me->prevBarWidth = 0;
+			me->prevBarSide = 0;
+
+			// Force complete redraw of display
+			drawDetectedFreq(me->detectedFreq, me->centOffset);
+			if (me->a4Visible) {
+				drawA4Overlay(me->currentFreq);
+			}
+			return Q_HANDLED();
+		}
         case ENCODER_UP: {
             if (me->currentFreq < MAX_FREQ) {
                 me->currentFreq++;
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
-                // Recalculate cents with new base frequency
-                // me->centOffset = calculateCents(me->detectedFreq, me->currentFreq);
-                // drawDetectedFreq(me->detectedFreq, me->centOffset);
             }
             return Q_HANDLED();
         }
@@ -252,19 +352,11 @@ QState Lab2A_standardTuning(Lab2A *me) {
                 me->currentFreq--;
                 me->a4Visible = 1;
                 drawA4Overlay(me->currentFreq);
-                // Recalculate cents with new base frequency
-                // me->centOffset = calculateCents(me->detectedFreq, me->currentFreq);
-                // drawDetectedFreq(me->detectedFreq, me->centOffset);
             }
             return Q_HANDLED();
         }
-        case BTN1_PRESS: {
-            me->currentFreq = DEFAULT_FREQ;
-            me->a4Visible = 1;
-            drawA4Overlay(me->currentFreq);
-            return Q_HANDLED();
-        }
         case BTN2_PRESS: {
+            xil_printf("BTN2 handled in standard mode - transitioning to debug\n\r");
             return Q_TRAN(Lab2A_debugMode);
         }
         case TIMEOUT: {
@@ -275,10 +367,20 @@ QState Lab2A_standardTuning(Lab2A *me) {
             return Q_HANDLED();
         }
         case NEW_FREQ_EVENT: {
-			drawDetectedFreq(me->detectedFreq, me->centOffset);
-			return Q_HANDLED();
-		}
+            // Store in history
+            me->freqHistory[me->historyIndex].freq = me->detectedFreq;
+            me->freqHistory[me->historyIndex].cents = me->centOffset;
+            findNoteForDisplay(me->detectedFreq, me->freqHistory[me->historyIndex].note,
+                            sizeof(me->freqHistory[me->historyIndex].note),
+                            me->currentFreq);
 
+            // Advance history index (circular buffer)
+            me->historyIndex = (me->historyIndex + 1) % FREQ_HISTORY_SIZE;
+
+            // Always draw when receiving new frequency data
+            drawDetectedFreq(me->detectedFreq, me->centOffset);
+            return Q_HANDLED();
+        }
     }
     return Q_SUPER(Lab2A_on);
 }
@@ -286,29 +388,16 @@ QState Lab2A_standardTuning(Lab2A *me) {
 QState Lab2A_debugMode(Lab2A *me) {
     switch (Q_SIG(me)) {
         case Q_ENTRY_SIG: {
+        	xil_printf("Entering debug mode\n\r");
+            me->currentMode = 1; // Set debug mode
             drawDebugDisplay(me);
             return Q_HANDLED();
         }
-        case ENCODER_UP: {
-            if (me->currentFreq < MAX_FREQ) {
-                me->currentFreq++;
-                drawDebugDisplay(me);
-            }
-            return Q_HANDLED();
-        }
-        case ENCODER_DOWN: {
-            if (me->currentFreq > MIN_FREQ) {
-                me->currentFreq--;
-                drawDebugDisplay(me);
-            }
-            return Q_HANDLED();
-        }
-        case BTN1_PRESS: {
-            me->currentFreq = DEFAULT_FREQ;
-            drawDebugDisplay(me);
-            return Q_HANDLED();
-        }
-        case BTN2_PRESS: {
+
+        case BTN3_PRESS: {      // STANDARD MODE
+        	xil_printf("BTN3 handled in debug mode - Returning to standard mode\n\r");
+            setColor(0, 0, 0);  // Black background
+            fillRect(0, 0, 240, 320);
             return Q_TRAN(Lab2A_standardTuning);
         }
 

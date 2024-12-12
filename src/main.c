@@ -147,7 +147,7 @@ int main(void) {
     Xil_DCacheEnable();
 
     // Initialize FFT and peripherals
-    init_fft_tables();
+    LUT_construct();
 //    init_performance_monitor();
 //    start_monitoring();
     stream_grabber_start();

@@ -40,6 +40,8 @@ static XGpio btnGpio;  // For push buttons
 #define S6 6
 #define DEBOUNCE_TICKS 100
 
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+
 // State variables for encoder
 volatile int currentState = S0;
 volatile int directionFlag = 0;
@@ -61,28 +63,30 @@ volatile int lastActivityTime = 0;
 
 void debounceInterrupt(); // Write This function
 
-int calculateCents(float freq, float baseFreq) {
+int calculateCents(float freq, float nearestNoteFreq) {
     // Validate input frequencies
-    if (freq <= 0 || baseFreq <= 0) {
+    if (freq <= 0 || nearestNoteFreq <= 0) {
         return 0;
     }
 
-    return (int)(1200.0 * log2(freq/baseFreq));
+    // Calculate cents difference
+    // Using 100 cents per semitone, positive if freq is higher than nearest note
+    return (int)(100.0 * log2(freq/nearestNoteFreq));
 }
 
 // Get the nearest note frequency
 float getNearestNoteFreq(float freq, float a4Freq) {
     if (freq <= 0) return a4Freq;
-    
+
     // Scale all note frequencies based on A4 tuning
     float scalingFactor = a4Freq / 440.0;  // How much to scale standard frequencies
-    
+
     // Find the nearest note in the standard scale, then apply the scaling
     float normalizedFreq = freq / scalingFactor;  // Convert to standard A440 scale
     float a4 = 440.0;  // A4 in standard tuning
     float semitones = 12.0 * log2(normalizedFreq/a4);
     int nearestSemitone = (int)(semitones + 0.5);
-    
+
     // Calculate the note frequency in A440 scale, then scale to the current A4 reference
     float standardFreq = a4 * pow(2.0, nearestSemitone/12.0);
     return standardFreq * scalingFactor;
@@ -157,16 +161,20 @@ void BSP_init(void) {
 
     // Initialize interrupt controller and connect handlers
     status = XIntc_Initialize(&intc, XPAR_INTC_0_DEVICE_ID);
+    status = XGpio_Initialize(&btnGpio, XPAR_AXI_GPIO_BTN_DEVICE_ID);
     if (status != XST_SUCCESS) {
         xil_printf("Initialize interrupt controller fail!\n\r");
         return;
     }
+    XGpio_SetDataDirection(&btnGpio, 1, 0xF);  // Set as input
 
     // Connect encoder and timer interrupts
     status = XIntc_Connect(&intc,
         XPAR_MICROBLAZE_0_AXI_INTC_ENCODER_IP2INTC_IRPT_INTR,
         (XInterruptHandler)encoder_handler,
         &encoder);
+    XIntc_Connect(&intc, XPAR_MICROBLAZE_0_AXI_INTC_AXI_GPIO_BTN_IP2INTC_IRPT_INTR,
+				(XInterruptHandler) button_handler, &btnGpio);
     if (status != XST_SUCCESS) {
         xil_printf("Connect encoder interrupt fail!\n\r");
         return;
@@ -198,6 +206,9 @@ void BSP_init(void) {
 
     XIntc_Enable(&intc, XPAR_MICROBLAZE_0_AXI_INTC_ENCODER_IP2INTC_IRPT_INTR);
     XIntc_Enable(&intc, XPAR_MICROBLAZE_0_AXI_INTC_AXI_TIMER_0_INTERRUPT_INTR);
+    XGpio_InterruptEnable(&btnGpio, 1);
+	XGpio_InterruptGlobalEnable(&btnGpio);
+    XIntc_Enable(&intc, XPAR_MICROBLAZE_0_AXI_INTC_AXI_GPIO_BTN_IP2INTC_IRPT_INTR);
 
     // Initialize SPI
     spiConfig = XSpi_LookupConfig(XPAR_SPI_DEVICE_ID);
@@ -251,39 +262,71 @@ void QF_onStartup(void) {                 /* entered with interrupts locked */
 void QF_onIdle(void) {
     QF_INT_UNLOCK();
 
-    static const int averaging_factor = 4;
-    static const float sample_f = SAMPLE_RATE / averaging_factor;
+    if (AO_Lab2A.currentMode == 0) { // Standard mode
+        // First pass - detect octave with no decimation
+        read_fsl_values(q, SAMPLES, 1);
+        sample_f = SAMPLE_RATE;  // 100*1000*1000/2048.0
 
-    // Read new audio samples
-    read_fsl_values(q, SAMPLES/averaging_factor, averaging_factor);
+        // Clear imaginary buffer
+        for(int l = 0; l < SAMPLES; l++) {
+            w[l] = 0;
+        }
 
-    // Zero the imaginary buffer
-    memset(w, 0, (SAMPLES/averaging_factor) * sizeof(float));
+        // Initial FFT for octave detection
+        float initial_freq = fft(q, w, SAMPLES, FFT_LOG2_SAMPLES, sample_f);
 
-    // Run FFT
-    float frequency = fft(q, w, SAMPLES/averaging_factor,
-                         FFT_LOG2_SAMPLES - 2,
-                         sample_f);
+        // Determine factor based on octave
+        int factor = 1;
+        int octave = 4;  // Default to middle octave
 
-    // Validate frequency
-    if (frequency <= 0 || frequency > 5000) {
-        return;
+        if (initial_freq > 0) {
+            octave = (int)(log2(initial_freq/440.0) + 4.0);
+
+            if (octave < 3) {
+                factor = 64;
+            } else if (octave < 7) {
+                factor = 8;
+            } else if (octave < 8) {
+                factor = 4;
+            } else if (octave < 9) {
+                factor = 2;
+            } else {
+                factor = 1;
+            }
+        }
+
+        // Second pass with appropriate decimation
+        read_fsl_values(q, SAMPLES, factor);
+        sample_f = SAMPLE_RATE/factor;
+
+        // Clear imaginary buffer again
+        for(int l = 0; l < SAMPLES; l++) {
+            w[l] = 0;
+        }
+
+        // Final FFT with decimation
+        float frequency = fft(q, w, SAMPLES, FFT_LOG2_SAMPLES, sample_f);
+
+        // Validate frequency
+        if (frequency <= 0 || frequency > 5000) {
+            return;
+        }
+
+        // Calculate cents offset using current base frequency
+        float nearestNote = getNearestNoteFreq(frequency, AO_Lab2A.currentFreq);
+        int cents = calculateCents(frequency, nearestNote);
+
+        // Clamp cents to reasonable range for display
+        if (cents > 50) cents = 50;
+        if (cents < -50) cents = -50;
+
+        // Update active object
+        AO_Lab2A.detectedFreq = frequency;
+        AO_Lab2A.centOffset = cents;
+
+        // Post event to update display
+        QActive_postISR((QActive *)&AO_Lab2A, NEW_FREQ_EVENT);
     }
-
-    // Calculate cents offset using the current base frequency
-    float nearestNote = getNearestNoteFreq(frequency, AO_Lab2A.currentFreq);
-    int cents = calculateCents(frequency, nearestNote);
-
-    // Clamp cents to reasonable range for display
-    if (cents > 50) cents = 50;
-    if (cents < -50) cents = -50;
-
-    // Update active object
-    AO_Lab2A.detectedFreq = frequency;
-    AO_Lab2A.centOffset = (int)cents;
-
-    // Post event to update display
-    QActive_postISR((QActive *)&AO_Lab2A, NEW_FREQ_EVENT);
 }
 
 /* Q_onAssert is called only when the program encounters an error*/
@@ -313,18 +356,24 @@ void GpioHandler(void *CallbackRef) {
 
 void button_handler(void *CallbackRef) {
     XGpio *GpioPtr = (XGpio *)CallbackRef;
-    unsigned int buttons = XGpio_DiscreteRead(GpioPtr, 1);
+    unsigned int buttons = XGpio_DiscreteRead(&btnGpio, 1);
 
     lastActivityTime = 0;  // Reset activity timer for any button press
 
-    if (buttons & 0x01)      // Button 1
+    if (buttons & 0x01) {
         QActive_postISR((QActive *)&AO_Lab2A, BTN1_PRESS);
-    else if (buttons & 0x02) // Button 2
+    }      // Button 1
+    else if (buttons & 0x02) {// Button 2
         QActive_postISR((QActive *)&AO_Lab2A, BTN2_PRESS);
-    else if (buttons & 0x04) // Button 3
+    }
+    else if (buttons & 0x04) {// Button 3
+        xil_printf("BTN3 PRESS\n\r");
         QActive_postISR((QActive *)&AO_Lab2A, BTN3_PRESS);
-    else if (buttons & 0x08) // Button 4
+    }
+    else if (buttons & 0x08) {// Button 4
+        xil_printf("BTN4 PRESS\n\r");
         QActive_postISR((QActive *)&AO_Lab2A, BTN4_PRESS);
+    }
 
     XGpio_InterruptClear(GpioPtr, 1);
 }
@@ -429,24 +478,17 @@ void debounceInterrupt() {
 	// XGpio_InterruptClear(&sw_Gpio, GPIO_CHANNEL1); // (Example, need to fill in your own parameters
 }
 
-void read_fsl_values(float* q, int n, int averaging_factor) {
-    int i, j;
-    unsigned int x;
-    int32_t sum;
+void read_fsl_values(float* q, int n, int decimate) {
+   int i;
+   unsigned int x;
+   stream_grabber_start(); //mawga doesnt have this
+   stream_grabber_wait_enough_samples(SAMPLES/decimate); //mawga doesnt have this
 
-    stream_grabber_start();
-    stream_grabber_wait_enough_samples(4096);
+   for(i = 0; i < n*decimate; i+=decimate) {
+      int_buffer[i/decimate] = stream_grabber_read_sample(i);
+      // xil_printf("%d\n",int_buffer[i]);
+      x = int_buffer[i/decimate];
+      q[i/decimate] = 3.3*x/67108864.0; // 3.3V and 2^26 bit precision.
 
-    // Process averaging_factor samples at a time
-    for(i = 0; i < n; i++) {
-        sum = 0;
-        // Sum averaging_factor samples together
-        for(j = 0; j < averaging_factor; j++) {
-            sum += stream_grabber_read_sample(i * averaging_factor + j);
-        }
-        // Note: we don't divide by averaging_factor as mentioned in the doc
-        // Convert to voltage after averaging to reduce floating point operations
-        int32_t shifted = sum >> 26;
-        q[i] = 3.3 * shifted;
-    }
+   }
 }

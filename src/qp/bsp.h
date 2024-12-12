@@ -14,6 +14,7 @@
 void BSP_init(void);
 void ISR_gpio(void);
 void ISR_timer(void);
+void checkInterruptStatus(void);
 
 void read_fsl_values(float* q, int n, int averaging_factor);
 
