@@ -11,3 +11,4 @@ int l = 0;
 float frequency = 0;
 int factor = 1;
 int octave = 4;  // Starting at middle octave
+volatile int dirFlag = 0;

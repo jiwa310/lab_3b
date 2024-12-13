@@ -103,14 +103,28 @@ void drawDetectedFreq(float freq, int cents) {
     const int centsY = barY + 30;
     const int barCenterX = SCREEN_WIDTH / 2;
 
-    // Get note info and colors
+    // Get note info
     char noteStr[10];
     findNoteForDisplay(freq, noteStr, sizeof(noteStr), me->currentFreq);
     const int noteWidth = strlen(noteStr) * cfont.x_size * SCALE;
     const int noteX = (SCREEN_WIDTH - noteWidth) / 2;
 
+    // Get colors for current cents value
     uint8_t r, g, b;
     getColorForCents(cents, &r, &g, &b);
+
+    // Check if we need to update note display
+    int noteNeedsUpdate = 0;
+
+    // Update if note text changed
+    if (strcmp(noteStr, me->prevNoteStr) != 0) {
+        noteNeedsUpdate = 1;
+    }
+
+    // Update if color changed
+    if (r != me->prevR || g != me->prevG || b != me->prevB) {
+        noteNeedsUpdate = 1;
+    }
 
     // Update frequency display if changed
     if (freq != me->prevFreq) {
@@ -127,8 +141,8 @@ void drawDetectedFreq(float freq, int cents) {
         me->prevFreq = freq;
     }
 
-    // Update note display if changed
-    if (strcmp(noteStr, me->prevNoteStr) != 0) {
+    // Update note display if needed
+    if (noteNeedsUpdate) {
         setColor(0, 0, 0);  // Clear old note
         fillRect(0, noteY, SCREEN_WIDTH, noteY + (cfont.y_size * SCALE));
 
@@ -136,6 +150,9 @@ void drawDetectedFreq(float freq, int cents) {
         setColorBg(0, 0, 0);
         lcdPrintScaled(noteStr, noteX, noteY);
         strcpy(me->prevNoteStr, noteStr);
+        me->prevR = r;
+        me->prevG = g;
+        me->prevB = b;
     }
 
     // Bar drawing - only update if needed
@@ -151,7 +168,7 @@ void drawDetectedFreq(float freq, int cents) {
         barSide = -1;
     }
 
-    // Only update bar if position or color changed
+    // Only update bar if position, size, or color changed
     if (width != me->prevBarWidth || barSide != me->prevBarSide ||
         r != me->prevR || g != me->prevG || b != me->prevB) {
         
@@ -174,9 +191,6 @@ void drawDetectedFreq(float freq, int cents) {
 
         me->prevBarWidth = width;
         me->prevBarSide = barSide;
-        me->prevR = r;
-        me->prevG = g;
-        me->prevB = b;
     }
 
     // Update cents display if changed
@@ -320,7 +334,7 @@ QState Lab2A_on(Lab2A *me) {
 
 QState Lab2A_standardTuning(Lab2A *me) {
     switch (Q_SIG(me)) {
-    case Q_ENTRY_SIG: {
+    	case Q_ENTRY_SIG: {
 			xil_printf("Entering standard tuning mode\n\r");
 			me->currentMode = 0;
 

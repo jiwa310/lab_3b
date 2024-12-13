@@ -11,6 +11,7 @@ extern float w[SAMPLES];
 extern int int_buffer[SAMPLES];
 
 // Add these new declarations
+extern volatile int dirFlag;
 extern float sample_f;
 extern int l;
 extern float frequency;

@@ -61,4 +61,6 @@ void clearA4Overlay(void);
 void drawDetectedFreq(float freq, int cents);
 void drawNote(float freq);
 
+int findOctave(float freq, float baseA4);
+
 #endif

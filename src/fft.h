@@ -3,7 +3,6 @@
 
 #include "globals.h"
 
-#define PI 3.141592
 #define MAX_FFT_SIZE 512
 
 // Lookup tables for sine and cosine values

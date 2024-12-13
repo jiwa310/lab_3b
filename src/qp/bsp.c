@@ -63,15 +63,21 @@ volatile int lastActivityTime = 0;
 
 void debounceInterrupt(); // Write This function
 
-int calculateCents(float freq, float nearestNoteFreq) {
+int calculateCents(float f, float nearestNoteFreq) {
     // Validate input frequencies
-    if (freq <= 0 || nearestNoteFreq <= 0) {
+    if (f <= 0 || nearestNoteFreq <= 0) {
         return 0;
     }
 
-    // Calculate cents difference
-    // Using 100 cents per semitone, positive if freq is higher than nearest note
-    return (int)(100.0 * log2(freq/nearestNoteFreq));
+    // Calculate next note up (r in friend's code)
+    float nextNoteFreq = nearestNoteFreq * pow(2.0, 1.0/12.0);
+
+    // Use his exact calculation
+    if ((f - nearestNoteFreq) <= (nextNoteFreq - f)) {  //closer to left note
+        return (int)((f - nearestNoteFreq)/((nextNoteFreq - nearestNoteFreq)/100));
+    } else {  //closer to right note
+        return (int)((f - nextNoteFreq)/((nextNoteFreq - nearestNoteFreq)/100));
+    }
 }
 
 // Get the nearest note frequency

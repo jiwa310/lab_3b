@@ -17,6 +17,7 @@ void ISR_timer(void);
 void checkInterruptStatus(void);
 
 void read_fsl_values(float* q, int n, int averaging_factor);
+int findNoteAndCents(float f, float baseA4, int* cents);
 
 //void printDebugLog(void);
 
